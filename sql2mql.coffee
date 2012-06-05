@@ -54,6 +54,7 @@ class MqlLexer extends Lexer
 		'*': "\\*"
 		',': ","
 		'=': "="
+		'>': ">"
 		
 		# keywords
 		'BY': "BY"
@@ -170,13 +171,18 @@ class MqlParser extends Parser
 		return @consumeFieldList()
 		
 	consumeExpression: () ->
-		return @consumeEquals()
+		return @consumeComparison()
 		
-	consumeEquals: () ->
+	consumeComparison: () ->
 		r = {}
 		
 		r.left = @assertNextToken('IDENTIFIER').value
-		r.operator = @assertNextToken('=').value
+		@branch({
+			'=': () =>
+				r.operator = @assertNextToken('=').value
+			'>': () =>
+				r.operator = @assertNextToken('>').value
+		})
 		r.right = @assertNextToken('INTEGER').value
 		
 		return r
@@ -215,7 +221,11 @@ class Mql
 		# filter fields
 		where = null
 		if tree.where
-			where = '{' + tree.where.left + ':' + tree.where.right + '}'
+			switch tree.where.operator
+				when '='
+					where = '{' + tree.where.left + ':' + tree.where.right + '}'
+				when '>'
+					where = '{' + tree.where.left + ':{$gt:' + tree.where.right + '}}'
 		
 		# select fields
 		fields = null
