@@ -56,7 +56,9 @@ class MqlLexer extends Lexer
 		'=': "="
 		
 		# keywords
+		'BY': "BY"
 		'FROM': "FROM"
+		'ORDER': "ORDER"
 		'SELECT': "SELECT"
 		'WHERE': "WHERE"
 		
@@ -144,6 +146,10 @@ class MqlParser extends Parser
 		# WHERE is optional
 		if @peekNextToken().token == 'WHERE'
 			r.where = @consumeWhere()
+			
+		# ORDER BY is optional
+		if @peekNextToken().token == 'ORDER'
+			r.orderBy = @consumeOrderBy()
 		
 		# all good
 		return r
@@ -154,6 +160,14 @@ class MqlParser extends Parser
 		
 		# consume expression
 		return @consumeExpression()
+		
+	consumeOrderBy: () ->
+		# consume 'ORDER BY'
+		@assertNextToken('ORDER')
+		@assertNextToken('BY')
+		
+		# consume expression
+		return @consumeFieldList()
 		
 	consumeExpression: () ->
 		return @consumeEquals()
@@ -213,14 +227,25 @@ class Mql
 			fields += "}"
 		
 		# convert the tree into a MongoDB call
+		mql = ''
 		if fields == null and where == null
-			return 'db.' + tree.from + '.find()'
+			mql = 'db.' + tree.from + '.find()'
 		else if fields != null and where == null
-			return 'db.' + tree.from + '.find({}, ' + fields + ')'
+			mql = 'db.' + tree.from + '.find({}, ' + fields + ')'
 		else if fields == null and where != null
-			return 'db.' + tree.from + '.find(' + where + ')'
+			mql = 'db.' + tree.from + '.find(' + where + ')'
 		else
-			return 'db.' + tree.from + '.find(' + where + ', ' + fields + ')'
+			mql = 'db.' + tree.from + '.find(' + where + ', ' + fields + ')'
+			
+		# sort
+		if tree.orderBy
+			mql += ".sort({"
+			for key, value of tree.orderBy
+				mql += ',' if key > 0
+				mql += value + ":1"
+			mql += "})"
+		
+		return mql
 
 if process.argv[2]
 	mql = new Mql()

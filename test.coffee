@@ -30,5 +30,11 @@ vows
 		
 			'db.users.find({age:33}, {a:1,b:1})': (topic) ->
 				assert.equal(topic, 'db.users.find({age:33}, {a:1,b:1})')
+
+		'SELECT * FROM users WHERE age=33 ORDER BY name':
+			topic: -> mql.processSql('SELECT * FROM users WHERE age=33 ORDER BY name')
+		
+			'db.users.find({age:33}).sort({name:1})': (topic) ->
+				assert.equal(topic, 'db.users.find({age:33}).sort({name:1})')
 	
 	.run()
