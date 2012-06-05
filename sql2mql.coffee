@@ -51,10 +51,14 @@ class MqlLexer extends Lexer
 	# tokens we may encounter, highest importance first
 	TOKENS:
 		# symbols
+		'>=': ">="
+		'<=': "<="
+		
 		'*': "\\*"
 		',': ","
 		'=': "="
 		'>': ">"
+		'<': "<"
 		
 		# keywords
 		'BY': "BY"
@@ -182,6 +186,12 @@ class MqlParser extends Parser
 				r.operator = @assertNextToken('=').value
 			'>': () =>
 				r.operator = @assertNextToken('>').value
+			'<': () =>
+				r.operator = @assertNextToken('<').value
+			'>=': () =>
+				r.operator = @assertNextToken('>=').value
+			'<=': () =>
+				r.operator = @assertNextToken('<=').value
 		})
 		r.right = @assertNextToken('INTEGER').value
 		
@@ -226,6 +236,12 @@ class Mql
 					where = '{' + tree.where.left + ':' + tree.where.right + '}'
 				when '>'
 					where = '{' + tree.where.left + ':{$gt:' + tree.where.right + '}}'
+				when '<'
+					where = '{' + tree.where.left + ':{$lt:' + tree.where.right + '}}'
+				when '>='
+					where = '{' + tree.where.left + ':{$gte:' + tree.where.right + '}}'
+				when '<='
+					where = '{' + tree.where.left + ':{$lte:' + tree.where.right + '}}'
 		
 		# select fields
 		fields = null
@@ -257,6 +273,7 @@ class Mql
 		
 		return mql
 
+# if this is run from the command line execute the parser now
 if process.argv[2]
 	mql = new Mql()
 	sql = process.argv[2]

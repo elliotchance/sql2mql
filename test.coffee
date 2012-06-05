@@ -42,5 +42,23 @@ vows
 		
 			'db.users.find({age:{$gt:33}})': (topic) ->
 				assert.equal(topic, 'db.users.find({age:{$gt:33}})')
+
+		'SELECT * FROM users WHERE age<33':
+			topic: -> mql.processSql('SELECT * FROM users WHERE age<33')
+		
+			'db.users.find({age:{$lt:33}})': (topic) ->
+				assert.equal(topic, 'db.users.find({age:{$lt:33}})')
+
+		'SELECT * FROM users WHERE age>=33':
+			topic: -> mql.processSql('SELECT * FROM users WHERE age>=33')
+		
+			'db.users.find({age:{$gte:33}})': (topic) ->
+				assert.equal(topic, 'db.users.find({age:{$gte:33}})')
+
+		'SELECT * FROM users WHERE age<=33':
+			topic: -> mql.processSql('SELECT * FROM users WHERE age<=33')
+		
+			'db.users.find({age:{$lte:33}})': (topic) ->
+				assert.equal(topic, 'db.users.find({age:{$lte:33}})')
 	
 	.run()
