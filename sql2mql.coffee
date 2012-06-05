@@ -53,6 +53,7 @@ class MqlLexer extends Lexer
 		# symbols
 		'>=': ">="
 		'<=': "<="
+		'!=': "!="
 		
 		'*': "\\*"
 		',': ","
@@ -192,6 +193,8 @@ class MqlParser extends Parser
 				r.operator = @assertNextToken('>=').value
 			'<=': () =>
 				r.operator = @assertNextToken('<=').value
+			'!=': () =>
+				r.operator = @assertNextToken('!=').value
 		})
 		r.right = @assertNextToken('INTEGER').value
 		
@@ -242,6 +245,8 @@ class Mql
 					where = '{' + tree.where.left + ':{$gte:' + tree.where.right + '}}'
 				when '<='
 					where = '{' + tree.where.left + ':{$lte:' + tree.where.right + '}}'
+				when '!='
+					where = '{' + tree.where.left + ':{$ne:' + tree.where.right + '}}'
 		
 		# select fields
 		fields = null
