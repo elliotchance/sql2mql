@@ -53,13 +53,16 @@ class MqlLexer extends Lexer
 		# symbols
 		'*': "\\*"
 		',': ","
+		'=': "="
 		
 		# keywords
-		'FROM': "FROM",
+		'FROM': "FROM"
 		'SELECT': "SELECT"
+		'WHERE': "WHERE"
 		
 		# IDENTIFIER
 		'IDENTIFIER': "[a-zA-Z]+"
+		'INTEGER': '[0-9]+'
 	
 	constructor: (@stream) ->
 		super(@stream)
@@ -138,7 +141,30 @@ class MqlParser extends Parser
 		@assertNextToken('FROM')
 		r.from = @assertNextToken('IDENTIFIER').value
 		
+		# WHERE is optional
+		if @peekNextToken().token == 'WHERE'
+			r.where = @consumeWhere()
+		
 		# all good
+		return r
+		
+	consumeWhere: () ->
+		# consume 'WHERE'
+		@assertNextToken('WHERE')
+		
+		# consume expression
+		return @consumeExpression()
+		
+	consumeExpression: () ->
+		return @consumeEquals()
+		
+	consumeEquals: () ->
+		r = {}
+		
+		r.left = @assertNextToken('IDENTIFIER').value
+		r.operator = @assertNextToken('=').value
+		r.right = @assertNextToken('INTEGER').value
+		
 		return r
 	
 	consumeFieldList: () ->
@@ -172,9 +198,36 @@ class Mql
 		parser = new MqlParser(lexer)
 		tree = parser.consumeSql()
 		
+		# filter fields
+		where = null
+		if tree.where
+			where = '{' + tree.where.left + ':' + tree.where.right + '}'
+		
+		# select fields
+		fields = null
+		if tree.fields.length > 1 or tree.fields[0] != '*'
+			fields = "{"
+			for key, field of tree.fields
+				fields += ',' if key > 0
+				fields += field + ":1"
+			fields += "}"
+		
 		# convert the tree into a MongoDB call
-		return 'db.' + tree.from + '.find()'
+		if fields == null and where == null
+			return 'db.' + tree.from + '.find()'
+		else if fields != null and where == null
+			return 'db.' + tree.from + '.find({}, ' + fields + ')'
+		else if fields == null and where != null
+			return 'db.' + tree.from + '.find(' + where + ')'
+		else
+			return 'db.' + tree.from + '.find(' + where + ', ' + fields + ')'
 
-mql = new Mql()
-sql = process.argv[2]
-console.log(mql.processSql(sql))
+if process.argv[2]
+	mql = new Mql()
+	sql = process.argv[2]
+	console.log(mql.processSql(sql))
+
+# export module
+module.exports = {
+	Mql: Mql
+}
