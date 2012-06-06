@@ -108,5 +108,23 @@ vows
 		
 			"db.users.find({\"a\":1,\"b\":'q'})": (topic) ->
 				assert.equal(topic, "db.users.find({\"a\":1,\"b\":'q'})")
+
+		"SELECT * FROM users LIMIT 10":
+			topic: -> mql.processSql("SELECT * FROM users LIMIT 10")
+		
+			"db.users.find().limit(10).skip(20)": (topic) ->
+				assert.equal(topic, "db.users.find().limit(10)")
+
+		"SELECT * FROM users SKIP 20":
+			topic: -> mql.processSql("SELECT * FROM users SKIP 20")
+		
+			"db.users.find().skip(20)": (topic) ->
+				assert.equal(topic, "db.users.find().skip(20)")
+
+		"SELECT * FROM users LIMIT 10 SKIP 20":
+			topic: -> mql.processSql("SELECT * FROM users LIMIT 10 SKIP 20")
+		
+			"db.users.find().limit(10).skip(20)": (topic) ->
+				assert.equal(topic, "db.users.find().limit(10).skip(20)")
 	
 	.run()

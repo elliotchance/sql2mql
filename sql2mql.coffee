@@ -318,8 +318,10 @@ class MqlLexer extends Lexer
 		'DESC': "DESC"
 		'FROM': "FROM"
 		'LIKE': "LIKE"
+		'LIMIT': "LIMIT"
 		'ORDER': "ORDER"
 		'SELECT': "SELECT"
+		'SKIP': "SKIP"
 		'WHERE': "WHERE"
 		
 		# SINGLES
@@ -422,9 +424,31 @@ class MqlParser extends Parser
 		# ORDER BY is optional
 		if @peekNextToken().token == 'ORDER'
 			r.orderBy = @consumeOrderBy()
+			
+		# LIMIT is optional
+		if @peekNextToken().token == 'LIMIT'
+			r.limit = @consumeLimit()
+			
+		# SKIP is optional
+		if @peekNextToken().token == 'SKIP'
+			r.skip = @consumeSkip()
 		
 		# all good
 		return r
+		
+	consumeLimit: () ->
+		# consume 'LIMIT'
+		@assertNextToken('LIMIT')
+		
+		# consume expression
+		return @assertNextToken('INTEGER')
+		
+	consumeSkip: () ->
+		# consume 'SKIP'
+		@assertNextToken('SKIP')
+		
+		# consume expression
+		return @assertNextToken('INTEGER')
 		
 	consumeWhere: () ->
 		# consume 'WHERE'
@@ -587,6 +611,12 @@ class Mql
 					mql += "1"
 				
 			mql += "})"
+		
+		# limits
+		if tree.limit
+			mql += ".limit(" + tree.limit + ")"
+		if tree.skip
+			mql += ".skip(" + tree.skip + ")"
 		
 		return mql
 
