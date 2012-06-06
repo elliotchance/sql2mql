@@ -41,6 +41,9 @@ tests =
 	'SELECT * FROM users WHERE name LIKE "%Joe"': 'db.users.find({"name":/Joe$/})'
 	'SELECT * FROM users WHERE name LIKE "Joe%"': 'db.users.find({"name":/^Joe/})'
 	'SELECT * FROM users WHERE name LIKE "%Joe%"': 'db.users.find({"name":/Joe/})'
+	
+	# DELETE
+	'DELETE FROM users WHERE z="abc"': 'db.users.remove({"z":"abc"})'
 
 
 # create batch

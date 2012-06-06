@@ -321,6 +321,7 @@ class MqlLexer extends Lexer
 		'AND': "AND"
 		'ASC': "ASC"
 		'BY': "BY"
+		'DELETE': "DELETE"
 		'DESC': "DESC"
 		'FROM': "FROM"
 		'LIKE': "LIKE"
@@ -403,11 +404,28 @@ class MqlParser extends Parser
 	consumeSql: () ->
 		# begin
 		r = @branch({
-			'SELECT': () => @consumeSelect()
+			'SELECT': () => @consumeSelect(),
+			'DELETE': () => @consumeDelete()
 		})
 		
 		# consume EOF
 		#@assertNextToken('<EOF>')
+		
+		return r
+
+	consumeDelete: () ->
+		r = {}
+		
+		# consume 'DELETE FROM'
+		r.token = @assertNextToken('DELETE').value
+		@assertNextToken('FROM')
+		
+		# collection name
+		r.from = @assertNextToken('IDENTIFIER').value
+		
+		# WHERE is optional
+		if @peekNextToken().token == 'WHERE'
+			r.where = @consumeWhere()
 		
 		return r
 
@@ -581,10 +599,7 @@ class MqlParser extends Parser
 		
 class Mql
 
-	processSql: (sql) ->
-		lexer = new MqlLexer(sql)
-		parser = new MqlParser(lexer)
-		tree = parser.consumeSql()
+	processSelect: (tree) ->
 		translator = new MqlTranslator()
 		
 		# filter fields
@@ -637,6 +652,28 @@ class Mql
 			mql += ".skip(" + tree.skip + ")"
 		
 		return mql
+		
+	processDelete: (tree) ->
+		translator = new MqlTranslator()
+		
+		# filter fields
+		where = null
+		if tree.where
+			where = translator.translateMql(tree.where, 'string')
+			
+		return "db." + tree.from + ".remove(" + where + ")"
+
+	processSql: (sql) ->
+		lexer = new MqlLexer(sql)
+		parser = new MqlParser(lexer)
+		tree = parser.consumeSql()
+		
+		if tree.token == 'SELECT'
+			return @processSelect(tree)
+		if tree.token == 'DELETE'
+			return @processDelete(tree)
+			
+		throw new Error("Can't understand statement " + tree.token)
 
 # if this is run from the command line execute the parser now
 if process.argv[2]
