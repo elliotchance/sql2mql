@@ -299,7 +299,9 @@ class MqlLexer extends Lexer
 		
 		# keywords
 		'AND': "AND"
+		'ASC': "ASC"
 		'BY': "BY"
+		'DESC': "DESC"
 		'FROM': "FROM"
 		'LIKE': "LIKE"
 		'ORDER': "ORDER"
@@ -365,6 +367,14 @@ class Parser
 	peekNextToken: () ->
 		return @lexer.peekNextToken()
 
+class OrderByField
+
+	constructor: (@field, @order = 'ASC') ->
+		# nothing to do
+	
+	toString: () ->
+		@field + " " + @order
+
 class MqlParser extends Parser
 
 	consumeSql: () ->
@@ -415,7 +425,7 @@ class MqlParser extends Parser
 		@assertNextToken('BY')
 		
 		# consume expression
-		return @consumeFieldList()
+		return @consumeOrderByList()
 	
 	# @return Expression
 	consumeExpression: () ->
@@ -477,6 +487,32 @@ class MqlParser extends Parser
 				return @nextToken().value
 		})
 	
+	consumeOrderByList: () ->
+		r = []
+		
+		# we must have at least one field
+		r.push(@consumeOrderByField())
+		
+		# are their more fields?
+		while @peekNextToken().token == ','
+			# consume ','
+			@assertNextToken(',')
+			
+			r.push(@consumeOrderByField())
+		
+		return r
+	
+	# @return OrderByField
+	consumeOrderByField: () ->
+		# consume a single field
+		r = new OrderByField(@assertNextToken('IDENTIFIER'))
+		
+		# specify an order?
+		if @peekNextToken().token == 'ASC' or @peekNextToken().token == 'DESC'
+			r.order = @nextToken().value
+		
+		return r
+	
 	# @return SingleExpression
 	consumeSingle: () ->
 		# consume a single value
@@ -529,7 +565,13 @@ class Mql
 			mql += ".sort({"
 			for key, value of tree.orderBy
 				mql += ',' if key > 0
-				mql += value + ":1"
+				mql += value.field + ":"
+				
+				if value.order == 'DESC'
+					mql += "-1"
+				else
+					mql += "1"
+				
 			mql += "})"
 		
 		return mql
