@@ -448,14 +448,14 @@ class MqlParser extends Parser
 		@assertNextToken('LIMIT')
 		
 		# consume expression
-		return @assertNextToken('INTEGER')
+		return @assertNextToken('INTEGER').value * 1
 		
 	consumeSkip: () ->
 		# consume 'SKIP'
 		@assertNextToken('SKIP')
 		
 		# consume expression
-		return @assertNextToken('INTEGER')
+		return @assertNextToken('INTEGER').value * 1
 		
 	consumeWhere: () ->
 		# consume 'WHERE'
@@ -601,16 +601,20 @@ class Mql
 				fields += field + ":1"
 			fields += "}"
 		
+		findMethod = 'find'
+		if tree.limit == 1
+			findMethod = 'findOne'
+		
 		# convert the tree into a MongoDB call
 		mql = ''
 		if fields == null and where == null
-			mql = 'db.' + tree.from + '.find()'
+			mql = 'db.' + tree.from + '.' + findMethod + '()'
 		else if fields != null and where == null
-			mql = 'db.' + tree.from + '.find({}, ' + fields + ')'
+			mql = 'db.' + tree.from + '.' + findMethod + '({}, ' + fields + ')'
 		else if fields == null and where != null
-			mql = 'db.' + tree.from + '.find(' + where + ')'
+			mql = 'db.' + tree.from + '.' + findMethod + '(' + where + ')'
 		else
-			mql = 'db.' + tree.from + '.find(' + where + ', ' + fields + ')'
+			mql = 'db.' + tree.from + '.' + findMethod + '(' + where + ', ' + fields + ')'
 			
 		# sort
 		if tree.orderBy
@@ -627,7 +631,7 @@ class Mql
 			mql += "})"
 		
 		# limits
-		if tree.limit
+		if tree.limit and tree.limit != 1
 			mql += ".limit(" + tree.limit + ")"
 		if tree.skip
 			mql += ".skip(" + tree.skip + ")"

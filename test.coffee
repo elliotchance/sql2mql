@@ -8,6 +8,7 @@ mql = new (sql2mql.Mql)
 tests =
 	# nothing fancy
 	'SELECT * FROM mytable': 'db.mytable.find()'
+	'SELECT * FROM users LIMIT 1': 'db.users.findOne()'
 	
 	# fields
 	'SELECT a,b FROM users': 'db.users.find({}, {a:1,b:1})'
@@ -45,14 +46,12 @@ tests =
 # create batch
 batch = {}
 for k, v of tests
-	batch[k] = {
-		topic: -> mql.processSql(k)
-	}
-	batch[k][v] = (topic) ->
-		assert.equal(topic, v)
+	do (k, v) ->
+		batch[k] = {
+			topic: => mql.processSql(k)
+		}
+		batch[k][v] = (topic) =>
+			assert.equal(topic, v.toString())
 	
 # run
-vows
-	.describe('sql2mql tests2')
-	.addBatch(batch)
-	.run()
+vows.describe('sql2mql tests').addBatch(batch).run()
