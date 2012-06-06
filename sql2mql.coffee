@@ -94,6 +94,7 @@ class MqlTranslator
 			when '=' then '$eq'
 			when '!=' then '$ne'
 			when 'AND' then '$and'
+			when 'OR' then '$or'
 			else throw new Error("Unknown operator '" + op + "'")
 		
 	createRegexFromLike: (str) ->
@@ -238,6 +239,11 @@ class AndExpression extends BinaryExpression
 	constructor: (@left, @rights = []) ->
 		super("LOGICAL", @left, @rights)
 		
+class OrExpression extends BinaryExpression
+	
+	constructor: (@left, @rights = []) ->
+		super("LOGICAL", @left, @rights)
+		
 class ComparisonExpression extends BinaryExpression
 	
 	constructor: (@left, @rights = []) ->
@@ -320,6 +326,7 @@ class MqlLexer extends Lexer
 		'LIKE': "LIKE"
 		'LIMIT': "LIMIT"
 		'ORDER': "ORDER"
+		'OR': "OR"
 		'SELECT': "SELECT"
 		'SKIP': "SKIP"
 		'WHERE': "WHERE"
@@ -471,9 +478,16 @@ class MqlParser extends Parser
 		
 	# @return AndExpression
 	consumeAnd: () ->
-		ex = new AndExpression(@consumeComparison())
+		ex = new AndExpression(@consumeOr())
 		if @peekNextToken().token == 'AND'
 			ex.addRight(@assertNextToken('AND'), @consumeExpression())
+		return ex
+		
+	# @return OrExpression
+	consumeOr: () ->
+		ex = new OrExpression(@consumeComparison())
+		if @peekNextToken().token == 'OR'
+			ex.addRight(@assertNextToken('OR'), @consumeExpression())
 		return ex
 		
 	# @return ComparisonExpression

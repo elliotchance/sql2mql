@@ -126,5 +126,11 @@ vows
 		
 			"db.users.find().limit(10).skip(20)": (topic) ->
 				assert.equal(topic, "db.users.find().limit(10).skip(20)")
+
+		"SELECT * FROM users WHERE a=1 OR b=2":
+			topic: -> mql.processSql("SELECT * FROM users WHERE a=1 OR b=2")
+		
+			'db.users.find({$or:[{"a":1},{"b":2}]})': (topic) ->
+				assert.equal(topic, 'db.users.find({$or:[{"a":1},{"b":2}]})')
 	
 	.run()
