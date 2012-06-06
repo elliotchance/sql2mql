@@ -661,7 +661,10 @@ class Mql
 		if tree.where
 			where = translator.translateMql(tree.where, 'string')
 			
-		return "db." + tree.from + ".remove(" + where + ")"
+		mql = "db." + tree.from + ".remove("
+		mql += where if where
+		mql += ")"
+		return mql
 
 	processSql: (sql) ->
 		lexer = new MqlLexer(sql)
