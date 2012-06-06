@@ -59,10 +59,24 @@ class MqlOptimizer
 						out[field][op] = v2[field][op]
 				else
 					# no such luck
-					out['and'] = v
+					out['$and'] = v
 			else
 				# there is nothing we can do, so just pass it through
 				out[k] = v
+				
+		# simplify single AND
+		if @getArrayKeys(out).length == 1 and out['$and']
+			removeAnd = true
+			for k, v of out['$and']
+				if typeof v != 'object'
+					removeAnd = false
+					break
+			if removeAnd
+				newOut = {}
+				for k, v of out['$and']
+					key = @getArrayKeys(v)[0]
+					newOut[key] = v[key]
+				out = newOut
 		
 		return out
 

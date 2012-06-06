@@ -102,5 +102,11 @@ vows
 		
 			'db.users.find().sort({name:-1})': (topic) ->
 				assert.equal(topic, 'db.users.find().sort({name:-1})')
+
+		"SELECT * FROM users WHERE a=1 AND b='q'":
+			topic: -> mql.processSql("SELECT * FROM users WHERE a=1 AND b='q'")
+		
+			"db.users.find({\"a\":1,\"b\":'q'})": (topic) ->
+				assert.equal(topic, "db.users.find({\"a\":1,\"b\":'q'})")
 	
 	.run()
