@@ -66,5 +66,29 @@ vows
 		
 			'db.users.find({age:{$lte:33}})': (topic) ->
 				assert.equal(topic, 'db.users.find({age:{$ne:33}})')
+
+		'SELECT * FROM users WHERE name LIKE "%Joe%"':
+			topic: -> mql.processSql('SELECT * FROM users WHERE name LIKE "%Joe%"')
+		
+			'db.users.find({name:/Joe/})': (topic) ->
+				assert.equal(topic, 'db.users.find({name:/Joe/})')
+
+		'SELECT * FROM users WHERE name LIKE "Joe%"':
+			topic: -> mql.processSql('SELECT * FROM users WHERE name LIKE "Joe%"')
+		
+			'db.users.find({name:/^Joe/})': (topic) ->
+				assert.equal(topic, 'db.users.find({name:/^Joe/})')
+
+		'SELECT * FROM users WHERE name LIKE "%Joe"':
+			topic: -> mql.processSql('SELECT * FROM users WHERE name LIKE "%Joe"')
+		
+			'db.users.find({name:/Joe$/})': (topic) ->
+				assert.equal(topic, 'db.users.find({name:/Joe$/})')
+
+		'SELECT * FROM users WHERE name LIKE "Joe"':
+			topic: -> mql.processSql('SELECT * FROM users WHERE name LIKE "Joe"')
+		
+			'db.users.find({name:/^Joe$/})': (topic) ->
+				assert.equal(topic, 'db.users.find({name:/^Joe$/})')
 	
 	.run()

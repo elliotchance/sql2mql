@@ -64,13 +64,16 @@ class MqlLexer extends Lexer
 		# keywords
 		'BY': "BY"
 		'FROM': "FROM"
+		'LIKE': "LIKE"
 		'ORDER': "ORDER"
 		'SELECT': "SELECT"
 		'WHERE': "WHERE"
 		
-		# IDENTIFIER
+		# SINGLES
 		'IDENTIFIER': "[a-zA-Z]+"
 		'INTEGER': '[0-9]+'
+		'STRING_SINGLE': "'.*'"
+		'STRING_DOUBLE': '".*"'
 	
 	constructor: (@stream) ->
 		super(@stream)
@@ -195,10 +198,30 @@ class MqlParser extends Parser
 				r.operator = @assertNextToken('<=').value
 			'!=': () =>
 				r.operator = @assertNextToken('!=').value
+			'LIKE': () =>
+				r.operator = @assertNextToken('LIKE').value
 		})
-		r.right = @assertNextToken('INTEGER').value
+		
+		r.right = @consumeSingle().value
+		if r.operator == 'LIKE'
+			r.right = @createRegexFromLike(r.right)
 		
 		return r
+		
+	createRegexFromLike: (str) ->
+		# strip quotes
+		str = str.substr(1, str.length - 2)
+		
+		# start and end anchors
+		if str.charAt(0) != '%'
+			str = '^' + str
+		if str.charAt(str.length - 1) != '%'
+			str = str + '$'
+		
+		# handle %
+		str = str.replace(/%/g, '')
+		
+		return str
 	
 	consumeFieldList: () ->
 		r = []
@@ -222,6 +245,19 @@ class MqlParser extends Parser
 				return @nextToken().value
 			'IDENTIFIER': () =>
 				return @nextToken().value
+		})
+	
+	consumeSingle: () ->
+		# consume a single value
+		return @branch({
+			'IDENTIFIER': () =>
+				return @nextToken()
+			'INTEGER': () =>
+				return @nextToken()
+			'STRING_SINGLE': () =>
+				return @nextToken()
+			'STRING_DOUBLE': () =>
+				return @nextToken()
 		})
 		
 class Mql
@@ -247,6 +283,8 @@ class Mql
 					where = '{' + tree.where.left + ':{$lte:' + tree.where.right + '}}'
 				when '!='
 					where = '{' + tree.where.left + ':{$ne:' + tree.where.right + '}}'
+				when 'LIKE'
+					where = '{' + tree.where.left + ':/' + tree.where.right + '/}'
 		
 		# select fields
 		fields = null
