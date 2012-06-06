@@ -1,3 +1,239 @@
+class Token
+
+	# the name of the token
+	token = null
+	
+	# the value captured for this token
+	value = null
+	
+	constructor: (@token, @value = null) ->
+		# nothing really to do here
+	
+	toString: () ->
+		return @value
+
+class RightOperand
+
+	# @var Token
+	operator = null
+	
+	# @var Token
+	right = null
+	
+	constructor: (@operator, @right) ->
+		# do nothing here
+	
+	toString: () ->
+		return @operator.toString() + " " + @right.toString()
+
+# this class handles cases when the BSON can be reduced to a more simple from	
+class MqlOptimizer
+
+	getArrayKeys: (obj) ->
+		keys = []
+		for k, v of obj
+			keys.push(k)
+		return keys
+
+	optimizeBson: (bson) ->
+		# return anything that is not an object unharmed
+		if typeof bson != 'object'
+			return bson
+		
+		out = {}
+		for k, v of bson
+			if k == '$and'
+				# check if all the keys relate to the same field
+				field = @getArrayKeys(v[0])
+				for k2, v2 of v
+					if field.toString() != @getArrayKeys(v2)[0].toString()
+						field = null
+						break
+				
+				# if field still retains a value then all the keys are the same and we can simplify
+				# this expression
+				if field
+					out[field] = {}
+					for k2, v2 of v
+						op = @getArrayKeys(v2[field])[0]
+						out[field][op] = v2[field][op]
+				else
+					# no such luck
+					out['and'] = v
+			else
+				# there is nothing we can do, so just pass it through
+				out[k] = v
+		
+		return out
+
+class MqlTranslator
+	
+	constructor: () ->
+		# do nothing
+		
+	convertOperator: (op) ->
+		switch op
+			when '>' then '$gt'
+			when '<' then '$lt'
+			when '>=' then '$gte'
+			when '<=' then '$lte'
+			when '=' then '$eq'
+			when '!=' then '$ne'
+			when 'AND' then '$and'
+			else throw new Error("Unknown operator '" + op + "'")
+		
+	createRegexFromLike: (str) ->
+		# strip quotes
+		str = str.substr(1, str.length - 2)
+		
+		# start and end anchors
+		if str.charAt(0) != '%'
+			str = '^' + str
+		if str.charAt(str.length - 1) != '%'
+			str = str + '$'
+		
+		# handle %
+		str = str.replace(/%/g, '')
+		
+		return '/' + str + '/'
+	
+	# @var fmt Can be one of 'object' or 'string'
+	translateMql: (tree, fmt = 'object') ->
+		final = null
+		
+		switch tree.operatorClass
+			when 'SINGLE'
+				final = @translateMql(tree.left)
+				
+			when 'LOGICAL'
+				if tree.rights.length == 0
+					final = @translateMql(tree.left)
+				else
+					op = @convertOperator(tree.rights[0].operator.token)
+					r = {}
+					r[op] = [ @translateMql(tree.left) ]
+					for k, v of tree.rights
+						r[op].push(@translateMql(v.right))
+					final = r
+				
+			when 'COMPARISON'
+				r = {}
+				
+				switch tree.rights[0].operator.token
+					when '='
+						r[@translateMql(tree.left)] = @translateMql(tree.rights[0].right)
+					when 'LIKE'
+						regex = @createRegexFromLike(@translateMql(tree.rights[0].right))
+						r[@translateMql(tree.left)] = regex
+					else
+						op = @convertOperator(tree.rights[0].operator.token)
+						
+						r[@translateMql(tree.left)] = {}
+						r[@translateMql(tree.left)][op] = @translateMql(tree.rights[0].right)
+			
+				final = r
+				
+			when 'TOKEN'
+				# try and autocast
+				if tree.left.value.match(/^[0-9]+$/)
+					final = tree.left.value * 1
+				else
+					final = tree.left.value
+				
+			else
+				throw new Error("Unknown operatorClass '" + tree.operatorClass + "'")
+				
+		# before we finish up we run the raw BSON through the optimizer to see if it can be
+		# simplified
+		optimizer = new MqlOptimizer()
+		final = optimizer.optimizeBson(final)
+				
+		# if the format is 'object' we just return the object we've created
+		if fmt == 'object'
+			return final
+			
+		# if the format is 'string' we pretty-reduce it
+		if fmt == 'string'
+			return @prettyReduce(final)
+		
+		# we have been provided some invalid format
+		throw new Error("Unknown format '" + fmt + "'")
+	
+	prettyReduce: (tree) ->
+		# before we transverse, check to see if all the keys are integers
+		isArray = true		
+		for k, v of tree
+			if not k.match(/^[0-9]+$/)
+				isArray = false
+				break
+		
+		if isArray
+			r = '['
+			for k, v of tree
+				if r.length > 1
+					r += ","
+					
+				if typeof v == 'object'
+					r += @prettyReduce(v)
+				else
+					r += v
+			r += ']'
+		else
+			r = '{'
+			for k, v of tree
+				if r.length > 1
+					r += ","
+					
+				if k.charAt(0) != '$'
+					k = '"' + k + '"'
+					
+				if typeof v == 'object'
+					r += k + ":" + @prettyReduce(v)
+				else
+					r += k + ':' + v
+			r += '}'
+		
+		return r
+
+class BinaryExpression
+	
+	constructor: (@operatorClass, @left, @rights = []) ->
+		# do nothing
+	
+	addRight: (operator, right) ->
+		rightOperand = new RightOperand(operator, right)
+		@rights.push(rightOperand)
+		return rightOperand
+	
+	toString: () ->
+		r = ''
+		r += '(' if @rights.length > 0
+		r += @left.toString()
+		for key, value of @rights
+			r += " " + value.toString()
+		r += ')' if @rights.length > 0
+		return r
+		
+class Expression extends BinaryExpression
+	
+	constructor: (@left, @rights = []) ->
+		super("SINGLE", @left, @rights)
+		
+class AndExpression extends BinaryExpression
+	
+	constructor: (@left, @rights = []) ->
+		super("LOGICAL", @left, @rights)
+		
+class ComparisonExpression extends BinaryExpression
+	
+	constructor: (@left, @rights = []) ->
+		super("COMPARISON", @left, @rights)
+		
+class SingleExpression extends BinaryExpression
+	
+	constructor: (@left, @rights = []) ->
+		super("TOKEN", @left, @rights)
+
 class Lexer
 
 	# setup the lexer with the string it is going to tokenize
@@ -10,7 +246,7 @@ class Lexer
 	nextToken: (peek = false) ->
 		# hit EOF?
 		if @stream.length == 0
-			return { token: '<EOF>', value: null }
+			return new Token('<EOF>')
 	
 		# consume all ignores first
 		while true
@@ -34,9 +270,9 @@ class Lexer
 				# only crop if we are not peeking
 				if not peek
 					@stream = @stream.substr(firstMatch[0].length)
-				return { token: tokenName, value: firstMatch[0] }
+				return new Token(tokenName, firstMatch[0])
 		
-		return { token: null, value: null }
+		return new Token(token, value)
 	
 	peekNextToken: () ->
 		return @nextToken(true)
@@ -62,6 +298,7 @@ class MqlLexer extends Lexer
 		'<': "<"
 		
 		# keywords
+		'AND': "AND"
 		'BY': "BY"
 		'FROM': "FROM"
 		'LIKE': "LIKE"
@@ -97,8 +334,10 @@ class Parser
 				return tokenPath()
 		
 		# the token was not one of the possible branches
-		throw new Error("Found " + next.token + " '" + next.value + "' but expected one of: " +
-			paths)
+		msg = "Found " + next.token + " '" + next.value + "' but expected one of:"
+		for k, v of paths
+			msg += " " + k
+		throw new Error(msg)
 		
 	consume: (token, success) ->
 		# peek the next token and see if it is what we are looking for
@@ -177,51 +416,42 @@ class MqlParser extends Parser
 		
 		# consume expression
 		return @consumeFieldList()
-		
+	
+	# @return Expression
 	consumeExpression: () ->
-		return @consumeComparison()
+		return new Expression(@consumeAnd())
 		
+	# @return AndExpression
+	consumeAnd: () ->
+		ex = new AndExpression(@consumeComparison())
+		if @peekNextToken().token == 'AND'
+			ex.addRight(@assertNextToken('AND'), @consumeExpression())
+		return ex
+		
+	# @return ComparisonExpression
 	consumeComparison: () ->
-		r = {}
+		r = new ComparisonExpression(@consumeSingle())
 		
-		r.left = @assertNextToken('IDENTIFIER').value
-		@branch({
+		direction = {
 			'=': () =>
-				r.operator = @assertNextToken('=').value
+				@assertNextToken('=')
 			'>': () =>
-				r.operator = @assertNextToken('>').value
+				@assertNextToken('>')
 			'<': () =>
-				r.operator = @assertNextToken('<').value
+				@assertNextToken('<')
 			'>=': () =>
-				r.operator = @assertNextToken('>=').value
+				@assertNextToken('>=')
 			'<=': () =>
-				r.operator = @assertNextToken('<=').value
+				@assertNextToken('<=')
 			'!=': () =>
-				r.operator = @assertNextToken('!=').value
+				@assertNextToken('!=')
 			'LIKE': () =>
-				r.operator = @assertNextToken('LIKE').value
-		})
-		
-		r.right = @consumeSingle().value
-		if r.operator == 'LIKE'
-			r.right = @createRegexFromLike(r.right)
+				@assertNextToken('LIKE')
+		}
+		if direction[@peekNextToken().token]
+			r.addRight(@branch(direction), @consumeSingle())
 		
 		return r
-		
-	createRegexFromLike: (str) ->
-		# strip quotes
-		str = str.substr(1, str.length - 2)
-		
-		# start and end anchors
-		if str.charAt(0) != '%'
-			str = '^' + str
-		if str.charAt(str.length - 1) != '%'
-			str = str + '$'
-		
-		# handle %
-		str = str.replace(/%/g, '')
-		
-		return str
 	
 	consumeFieldList: () ->
 		r = []
@@ -247,18 +477,19 @@ class MqlParser extends Parser
 				return @nextToken().value
 		})
 	
+	# @return SingleExpression
 	consumeSingle: () ->
 		# consume a single value
-		return @branch({
+		return new SingleExpression(@branch({
 			'IDENTIFIER': () =>
-				return @nextToken()
+				@nextToken()
 			'INTEGER': () =>
-				return @nextToken()
+				@nextToken()
 			'STRING_SINGLE': () =>
-				return @nextToken()
+				@nextToken()
 			'STRING_DOUBLE': () =>
-				return @nextToken()
-		})
+				@nextToken()
+		}))
 		
 class Mql
 
@@ -266,25 +497,12 @@ class Mql
 		lexer = new MqlLexer(sql)
 		parser = new MqlParser(lexer)
 		tree = parser.consumeSql()
+		translator = new MqlTranslator()
 		
 		# filter fields
 		where = null
 		if tree.where
-			switch tree.where.operator
-				when '='
-					where = '{' + tree.where.left + ':' + tree.where.right + '}'
-				when '>'
-					where = '{' + tree.where.left + ':{$gt:' + tree.where.right + '}}'
-				when '<'
-					where = '{' + tree.where.left + ':{$lt:' + tree.where.right + '}}'
-				when '>='
-					where = '{' + tree.where.left + ':{$gte:' + tree.where.right + '}}'
-				when '<='
-					where = '{' + tree.where.left + ':{$lte:' + tree.where.right + '}}'
-				when '!='
-					where = '{' + tree.where.left + ':{$ne:' + tree.where.right + '}}'
-				when 'LIKE'
-					where = '{' + tree.where.left + ':/' + tree.where.right + '/}'
+			where = translator.translateMql(tree.where, 'string')
 		
 		# select fields
 		fields = null
