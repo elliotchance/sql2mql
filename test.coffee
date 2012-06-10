@@ -49,6 +49,9 @@ tests =
 	# DELETE
 	'DELETE FROM users': 'db.users.remove()'
 	'DELETE FROM users WHERE z="abc"': 'db.users.remove({"z":"abc"})'
+	
+	# CREATE TABLE
+	'CREATE TABLE mycoll (a Number, b Number)': 'db.createCollection("mycoll")'
 
 
 # create batch

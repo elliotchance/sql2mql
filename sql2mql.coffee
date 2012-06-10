@@ -333,6 +333,7 @@ class MqlLexer extends Lexer
 		'AND': "AND"
 		'ASC': "ASC"
 		'BY': "BY"
+		'CREATE': "CREATE"
 		'DELETE': "DELETE"
 		'DESC': "DESC"
 		'FROM': "FROM"
@@ -343,6 +344,7 @@ class MqlLexer extends Lexer
 		'SELECT': "SELECT"
 		'SET': "SET"
 		'SKIP': "SKIP"
+		'TABLE': "TABLE"
 		'WHERE': "WHERE"
 		'UPDATE': "UPDATE"
 		
@@ -420,11 +422,24 @@ class MqlParser extends Parser
 		r = @branch({
 			'SELECT': () => @consumeSelect(),
 			'DELETE': () => @consumeDelete(),
-			'UPDATE': () => @consumeUpdate()
+			'UPDATE': () => @consumeUpdate(),
+			'CREATE': () => @consumeCreate()
 		})
 		
-		# consume EOF
-		#@assertNextToken('<EOF>')
+		return r
+
+	consumeCreate: () ->
+		r = {}
+		
+		# consume 'CREATE TABLE'
+		r.token = 'CREATE TABLE'
+		@assertNextToken('CREATE')
+		@assertNextToken('TABLE')
+		
+		# collection name
+		r.tableName = @assertNextToken('IDENTIFIER').value
+		
+		# totally ignore the rest...
 		
 		return r
 
@@ -753,6 +768,9 @@ class Mql
 		mql += translator.translateMql(tree.set, 'string', 'set')
 		mql += ", false, true)"
 		return mql
+		
+	processCreateTable: (tree) ->
+		return 'db.createCollection("' + tree.tableName + '")'
 
 	processSql: (sql) ->
 		lexer = new MqlLexer(sql)
@@ -765,6 +783,8 @@ class Mql
 			return @processDelete(tree)
 		if tree.token == 'UPDATE'
 			return @processUpdate(tree)
+		if tree.token == 'CREATE TABLE'
+			return @processCreateTable(tree)
 			
 		throw new Error("Can't understand statement " + tree.token)
 
