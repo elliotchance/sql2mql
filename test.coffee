@@ -42,6 +42,10 @@ tests =
 	'SELECT * FROM users WHERE name LIKE "Joe%"': 'db.users.find({"name":/^Joe/})'
 	'SELECT * FROM users WHERE name LIKE "%Joe%"': 'db.users.find({"name":/Joe/})'
 	
+	# UPDATE
+	'UPDATE users SET a=1 WHERE b="q"': 'db.users.update({"b":"q"}, {$set:{"a":1}}, false, true)'
+	'UPDATE users SET a=a+2 WHERE b="q"': 'db.users.update({"b":"q"}, {$inc:{"a":2}}, false, true)'
+	
 	# DELETE
 	'DELETE FROM users': 'db.users.remove()'
 	'DELETE FROM users WHERE z="abc"': 'db.users.remove({"z":"abc"})'

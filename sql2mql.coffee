@@ -113,55 +113,65 @@ class MqlTranslator
 		return '/' + str + '/'
 	
 	# @var fmt Can be one of 'object' or 'string'
-	translateMql: (tree, fmt = 'object') ->
+	translateMql: (tree, fmt = 'object', mode = 'where') ->
 		final = null
-		
-		switch tree.operatorClass
-			when 'SINGLE'
-				final = @translateMql(tree.left)
-				
-			when 'LOGICAL'
-				if tree.rights.length == 0
-					final = @translateMql(tree.left)
+		if mode == 'set'
+			final = { $set: {} }
+			for k, v of tree
+				if v.value.operatorClass == 'MANUAL'
+					final = v.value.left
 				else
-					op = @convertOperator(tree.rights[0].operator.token)
-					r = {}
-					r[op] = [ @translateMql(tree.left) ]
-					for k, v of tree.rights
-						r[op].push(@translateMql(v.right))
-					final = r
-				
-			when 'COMPARISON'
-				r = {}
-				
-				switch tree.rights[0].operator.token
-					when '='
-						r[@translateMql(tree.left)] = @translateMql(tree.rights[0].right)
-					when 'LIKE'
-						regex = @createRegexFromLike(@translateMql(tree.rights[0].right))
-						r[@translateMql(tree.left)] = regex
+					final['$set'][v.field] = @translateMql(v.value)
+		else
+			switch tree.operatorClass
+				when 'SINGLE'
+					final = @translateMql(tree.left)
+					
+				when 'LOGICAL'
+					if tree.rights.length == 0
+						final = @translateMql(tree.left)
 					else
 						op = @convertOperator(tree.rights[0].operator.token)
+						r = {}
+						r[op] = [ @translateMql(tree.left) ]
+						for k, v of tree.rights
+							r[op].push(@translateMql(v.right))
+						final = r
+					
+				when 'COMPARISON'
+					if tree.rights.length == 0
+						final = @translateMql(tree.left)
+					else
+						r = {}
 						
-						r[@translateMql(tree.left)] = {}
-						r[@translateMql(tree.left)][op] = @translateMql(tree.rights[0].right)
-			
-				final = r
-				
-			when 'TOKEN'
-				# try and autocast
-				if tree.left.value.match(/^[0-9]+$/)
-					final = tree.left.value * 1
+						switch tree.rights[0].operator.token
+							when '='
+								r[@translateMql(tree.left)] = @translateMql(tree.rights[0].right)
+							when 'LIKE'
+								regex = @createRegexFromLike(@translateMql(tree.rights[0].right))
+								r[@translateMql(tree.left)] = regex
+							else
+								op = @convertOperator(tree.rights[0].operator.token)
+								
+								r[@translateMql(tree.left)] = {}
+								r[@translateMql(tree.left)][op] = @translateMql(tree.rights[0].right)
+					
+						final = r
+					
+				when 'TOKEN'
+					# try and autocast
+					if tree.left.value.match(/^[0-9]+$/)
+						final = tree.left.value * 1
+					else
+						final = tree.left.value
+					
 				else
-					final = tree.left.value
+					throw new Error("Unknown operatorClass '" + tree.operatorClass + "'")
 				
-			else
-				throw new Error("Unknown operatorClass '" + tree.operatorClass + "'")
-				
-		# before we finish up we run the raw BSON through the optimizer to see if it can be
-		# simplified
-		optimizer = new MqlOptimizer()
-		final = optimizer.optimizeBson(final)
+			# before we finish up we run the raw BSON through the optimizer to see if it can be
+			# simplified
+			optimizer = new MqlOptimizer()
+			final = optimizer.optimizeBson(final)
 				
 		# if the format is 'object' we just return the object we've created
 		if fmt == 'object'
@@ -185,8 +195,7 @@ class MqlTranslator
 		if isArray
 			r = '['
 			for k, v of tree
-				if r.length > 1
-					r += ","
+				r += "," if r.length > 1
 					
 				if typeof v == 'object'
 					r += @prettyReduce(v)
@@ -196,11 +205,8 @@ class MqlTranslator
 		else
 			r = '{'
 			for k, v of tree
-				if r.length > 1
-					r += ","
-					
-				if k.charAt(0) != '$'
-					k = '"' + k + '"'
+				r += "," if r.length > 1
+				k = '"' + k + '"' if k.charAt(0) != '$'
 					
 				if typeof v == 'object'
 					r += k + ":" + @prettyReduce(v)
@@ -235,6 +241,11 @@ class Expression extends BinaryExpression
 		super("SINGLE", @left, @rights)
 		
 class AndExpression extends BinaryExpression
+	
+	constructor: (@left, @rights = []) ->
+		super("LOGICAL", @left, @rights)
+		
+class AddExpression extends BinaryExpression
 	
 	constructor: (@left, @rights = []) ->
 		super("LOGICAL", @left, @rights)
@@ -316,6 +327,7 @@ class MqlLexer extends Lexer
 		'=': "="
 		'>': ">"
 		'<': "<"
+		'+': "\\+"
 		
 		# keywords
 		'AND': "AND"
@@ -329,8 +341,10 @@ class MqlLexer extends Lexer
 		'ORDER': "ORDER"
 		'OR': "OR"
 		'SELECT': "SELECT"
+		'SET': "SET"
 		'SKIP': "SKIP"
 		'WHERE': "WHERE"
+		'UPDATE': "UPDATE"
 		
 		# SINGLES
 		'IDENTIFIER': "[a-zA-Z]+"
@@ -405,11 +419,30 @@ class MqlParser extends Parser
 		# begin
 		r = @branch({
 			'SELECT': () => @consumeSelect(),
-			'DELETE': () => @consumeDelete()
+			'DELETE': () => @consumeDelete(),
+			'UPDATE': () => @consumeUpdate()
 		})
 		
 		# consume EOF
 		#@assertNextToken('<EOF>')
+		
+		return r
+
+	consumeUpdate: () ->
+		r = {}
+		
+		# consume 'UPDATE'
+		r.token = @assertNextToken('UPDATE').value
+		
+		# collection name
+		r.from = @assertNextToken('IDENTIFIER').value
+		
+		# SET is required
+		r.set = @consumeSet()
+		
+		# WHERE is optional
+		if @peekNextToken().token == 'WHERE'
+			r.where = @consumeWhere()
 		
 		return r
 
@@ -426,6 +459,38 @@ class MqlParser extends Parser
 		# WHERE is optional
 		if @peekNextToken().token == 'WHERE'
 			r.where = @consumeWhere()
+		
+		return r
+		
+	consumeSet: () ->
+		# consume 'SET'
+		@assertNextToken('SET')
+		
+		# consume expression
+		return @consumeSetList()
+		
+	consumeSetList: () ->
+		return [ @consumeSetField() ]
+		
+	consumeSetField: () ->
+		r = {}
+	
+		# field name
+		r.field = @assertNextToken('IDENTIFIER').value
+		@assertNextToken('=')
+		
+		# recognise self modification (increment)
+		if @consumeSingle(true) and @consumeSingle(true).left.token != 'IDENTIFIER'
+			r.value = @consumeSingle()
+		else if @peekNextToken('IDENTIFIER').value == r.field
+			@assertNextToken('IDENTIFIER')
+			@assertNextToken('+')
+			
+			manual = {'$inc': {}}
+			manual['$inc'][r.field] = @consumeSingle().left.value
+			r.value = new BinaryExpression('MANUAL', manual)
+		else
+			throw new Error("Can't understand UPDATE.")
 		
 		return r
 
@@ -510,7 +575,7 @@ class MqlParser extends Parser
 		
 	# @return ComparisonExpression
 	consumeComparison: () ->
-		r = new ComparisonExpression(@consumeSingle())
+		r = new ComparisonExpression(@consumeAdd())
 		
 		direction = {
 			'=': () =>
@@ -532,6 +597,13 @@ class MqlParser extends Parser
 			r.addRight(@branch(direction), @consumeSingle())
 		
 		return r
+		
+	# @return AddExpression
+	consumeAdd: () ->
+		ex = new AddExpression(@consumeSingle())
+		if @peekNextToken().token == '+'
+			ex.addRight(@assertNextToken('+'), @consumeExpression())
+		return ex
 	
 	consumeFieldList: () ->
 		r = []
@@ -552,9 +624,9 @@ class MqlParser extends Parser
 		# consume a single field
 		return @branch({
 			'*': () =>
-				return @nextToken().value
+				@nextToken().value
 			'IDENTIFIER': () =>
-				return @nextToken().value
+				@nextToken().value
 		})
 	
 	consumeOrderByList: () ->
@@ -584,17 +656,20 @@ class MqlParser extends Parser
 		return r
 	
 	# @return SingleExpression
-	consumeSingle: () ->
+	consumeSingle: (peek = false) ->
+		@action = @nextToken
+		@action = @peekNextToken if peek
+		
 		# consume a single value
 		return new SingleExpression(@branch({
 			'IDENTIFIER': () =>
-				@nextToken()
+				@action()
 			'INTEGER': () =>
-				@nextToken()
+				@action()
 			'STRING_SINGLE': () =>
-				@nextToken()
+				@action()
 			'STRING_DOUBLE': () =>
-				@nextToken()
+				@action()
 		}))
 		
 class Mql
@@ -659,11 +734,24 @@ class Mql
 		# filter fields
 		where = null
 		if tree.where
-			where = translator.translateMql(tree.where, 'string')
+			where = translator.translateMql(tree.where, 'string', 'where')
 			
 		mql = "db." + tree.from + ".remove("
 		mql += where if where
 		mql += ")"
+		return mql
+		
+	processUpdate: (tree) ->
+		translator = new MqlTranslator()
+		
+		# filter fields
+		where = '{}'
+		if tree.where
+			where = translator.translateMql(tree.where, 'string', 'where')
+		
+		mql = "db." + tree.from + ".update(" + where + ", "
+		mql += translator.translateMql(tree.set, 'string', 'set')
+		mql += ", false, true)"
 		return mql
 
 	processSql: (sql) ->
@@ -675,6 +763,8 @@ class Mql
 			return @processSelect(tree)
 		if tree.token == 'DELETE'
 			return @processDelete(tree)
+		if tree.token == 'UPDATE'
+			return @processUpdate(tree)
 			
 		throw new Error("Can't understand statement " + tree.token)
 
